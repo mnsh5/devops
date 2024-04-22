@@ -1,0 +1,86 @@
+# Docs for the Azure Web Apps Deploy action: https://github.com/azure/functions-action
+# More GitHub Actions for Azure: https://github.com/Azure/actions
+
+name: Build and deploy Java project to Azure Function App - emat-dev-indaba-java
+run-name: Build and deploy Java Function App
+on:
+  push:
+    branches:
+      - dev
+  workflow_dispatch:
+
+env:
+  AZURE_FUNCTIONAPP_NAME: emat-dev-func-indaba # set this to your function app name on Azure
+  POM_XML_DIRECTORY: "." # set this to the directory which contains pom.xml file
+  JAVA_VERSION: "11" # set this to the java version to use
+  ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+  ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+  ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+  ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - name: "Checkout GitHub Action"
+        uses: actions/checkout@v3
+
+      - name: Configure Azure Credentials
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.ARM_CREDENTIALS }}
+
+      - name: "Run az commands"
+        run: |
+          az account show
+          az account set --subscription ${{ env.ARM_SUBSCRIPTION_ID }}
+          az configure --defaults location=northeurope
+
+      - name: Setup Java Sdk ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v1
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: "Run mvn"
+        shell: bash
+        run: |
+          # If your function app project is not located in your repository's root
+          # Please change your directory for maven build in pushd
+          pushd './${{ env.POM_XML_DIRECTORY }}'
+          mvn clean package
+          mvn azure-functions:package
+          popd
+
+      - name: Deploy to Azure Web App
+        shell: bash
+        run: |
+          ls -lh
+          cd ./target/azure-functions/emat-dev-func-indaba/
+          zip -r ../app.zip .
+          export token=$(az account get-access-token --query "accessToken" -o tsv)
+          echo "zip done && token recovered"
+          az functionapp deployment source config-zip --name emat-dev-func-indaba --resource-group rg-TEPARAZRLD-app-emat-dev --src ../app.zip
+
+      # - name: Deploy to Azure Web App
+      #   shell: bash
+      #   run: |
+      #     EXTERNAL_IP=$(curl -s https://api.ipify.org)
+      #     echo "External IP of the runner is: $EXTERNAL_IP"
+      #     # Step 2: Add an access restriction rule to the Azure Function App
+      #     az functionapp config access-restriction add \
+      #         --resource-group rg-TEPARAZRLD-app-emat-dev \
+      #         --name $AZURE_FUNCTIONAPP_NAME \
+      #         --rule-name "GitHub-Runner-Access" \
+      #         --action Allow \
+      #         --ip-address $EXTERNAL_IP/32 \
+      #         --priority 100
+
+      #- name: "Run Azure Functions Action"
+      #  uses: Azure/functions-action@v1
+      #  id: fa
+      #  with:
+      #    app-name: ${{ env.AZURE_FUNCTIONAPP_NAME }}
+      #    package: "${{ env.POM_XML_DIRECTORY }}" # if there are multiple function apps in same project, then this path will be like './${{ env.POM_XML_DIRECTORY }}/target/azure-functions/${{ env.POM_FUNCTIONAPP_NAME }'
+      #    # publish-profile: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE }}
+      #    respect-pom-xml: true
