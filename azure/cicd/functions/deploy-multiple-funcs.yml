@@ -1,0 +1,143 @@
+name: Build and deploy apps to Azure Function App
+run-name: Build and deploy Azure Function App
+on:
+  push:
+    branches:
+      - feature/model
+  workflow_dispatch:
+
+env:
+  PYTHON_VERSION: "3.10"
+  ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+  ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+  ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+  ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - name: "Checkout GitHub Action"
+        uses: actions/checkout@v3
+
+      - name: Configure Azure Credentials
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.ARM_CREDENTIALS }}
+
+      - name: "Run az commands"
+        run: |
+          az account show
+          az account set --subscription ${{ env.ARM_SUBSCRIPTION_ID }}
+          az configure --defaults location=northeurope
+
+      - name: Checkout GitHub Python
+        uses: actions/checkout@v4
+
+      - name: Setup Python ${{ env.PYTHON_VERSION }} Environment
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Set variables
+        id: setvars
+        run: |
+          if [[ "${{ github.base_ref }}" == "feature/model" || "${{ github.ref }}" == "refs/heads/feature/model" ]]; then
+            echo ENV_NAME="dev" >> $GITHUB_ENV
+          fi
+
+      - name: "List functions"
+        shell: bash
+        run: |
+          cd ${{ github.workspace }}/src          
+          ls
+
+      - name: "Copy requirements.txt to each function directory"
+        shell: bash
+        run: |
+          cd ${{ github.workspace }}/src
+          for dir in */; do
+            if [ -d "$dir" ]; then
+              cp -f ../requirements.txt "$dir"
+              echo "Copied requirements.txt to $dir"
+            fi
+          done
+
+      - name: "Copy model.py file to each function directory"
+        shell: bash
+        run: |
+          cd ${{ github.workspace }}/src
+          for dir in */; do
+            if [ -d "$dir" ]; then
+                cp -r ../model/model.py "$dir"
+                echo "Copied model.py folder to $dir"
+            fi
+          done
+
+      - name: "List each function directory"
+        shell: bash
+        run: |
+          cd ${{ github.workspace }}/src/
+          for dir in */; do
+            if [ -d "$dir" ]; then
+                cd "$dir"
+                echo "Contents of $dir:"
+                ls  # List files and directories inside $dir
+                cd ..
+            fi
+          done
+
+      - name: Install dependencies on each functions
+        run: |
+          cd ${{ github.workspace }}/src/
+          for dir in */; do
+            if [ -d "$dir" ]; then
+              pushd "$dir"  # Guardar el directorio actual en la pila de directorios
+              python3 -m venv .venv  
+              source .venv/bin/activate  
+              pip install --upgrade pip
+              pip install -r requirements.txt  
+              deactivate  
+              popd  
+            fi
+          done
+
+      - name: List workspace
+        shell: bash
+        run: |
+          cd ${{ github.workspace }}
+          ls -lh
+          pwd
+
+      - name: List functions and store in a variable
+        id: list_functions
+        shell: bash
+        run: |
+          cd ${{ github.workspace }}/src
+          functions=()
+          for dir in */; do
+            if [ -d "$dir" ]; then
+              dir=${dir%/}
+              functions+=("$dir")           
+            fi
+          done
+          functions_list="${functions[@]}"
+          echo "List of functions: $functions_list"
+          echo "functions_list=$functions_list" >> $GITHUB_ENV
+
+      - name: Deploy functions to Azure Function App
+        if: github.ref == 'refs/heads/feature/model' && github.event_name == 'push'
+        shell: bash
+        run: |
+          IFS=' ' read -r -a functions <<< "${{ env.functions_list }}"
+          for func in "${functions[@]}"; do
+            func_dest=$(echo "$func" | tr '_' '-')
+            echo "Deploying $func_dest..."
+            cd "${{ github.workspace }}/src/$func"
+            zip -r "../$func.zip" . -x '*.venv/*'
+            export token=$(az account get-access-token --query "accessToken" -o tsv)
+            echo "zip done && token recovered"
+            az functionapp deployment source config-zip --name "app-${ENV_NAME}-$func_dest" --resource-group functions-app-${ENV_NAME} --src "../$func.zip"
+            echo "The deploy of function $func_dest has been successful"
+          done
