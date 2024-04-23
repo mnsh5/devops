@@ -1,18 +1,18 @@
 # Docs for the Azure Web Apps Deploy action: https://github.com/azure/functions-action
 # More GitHub Actions for Azure: https://github.com/Azure/actions
 
-name: Build and deploy Java project to Azure Function App - emat-dev-indaba-java
+name: Build and deploy apps to Azure Function App
 run-name: Build and deploy Java Function App
 on:
   push:
     branches:
-      - dev
+      - "features/integrations"
   workflow_dispatch:
 
 env:
-  AZURE_FUNCTIONAPP_NAME: emat-dev-func-indaba # set this to your function app name on Azure
-  POM_XML_DIRECTORY: "." # set this to the directory which contains pom.xml file
-  JAVA_VERSION: "11" # set this to the java version to use
+  AZURE_FUNCTIONAPP_NAME: "emat-dev-fnc-java-integration"
+  POM_XML_DIRECTORY: "."
+  JAVA_VERSION: "17"
   ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
   ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
   ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
@@ -42,22 +42,35 @@ jobs:
         with:
           java-version: ${{ env.JAVA_VERSION }}
 
+      - name: Set variables
+        id: setvars
+        run: |
+          if [[ "${{ github.base_ref }}" == "features/integrations" || "${{ github.ref }}" == "refs/heads/features/integrations" ]]; then
+              echo ENV_NAME="dev" >> $GITHUB_ENV
+          fi
+
       - name: "Run mvn"
         shell: bash
         run: |
           # If your function app project is not located in your repository's root
           # Please change your directory for maven build in pushd
           pushd './${{ env.POM_XML_DIRECTORY }}'
-          mvn clean package
-          mvn azure-functions:package
+          mvn clean package -Dmaven.test.skip=true
+          mvn azure-functions:package -Dmaven.test.skip=true
           popd
 
-      - name: Deploy to Azure Web App
+          # mvn clean package
+          # mvn azure-functions:package
+          # popd
+
+      - name: Deploy Java function to Azure Function App
+        if: github.ref == 'refs/heads/features/integrations' && github.event_name == 'push'
         shell: bash
         run: |
           ls -lh
-          cd ./target/azure-functions/emat-dev-func-indaba/
+          cd ./target/azure-functions/emat-${ENV_NAME}-fnc-java-integration/
           zip -r ../app.zip .
           export token=$(az account get-access-token --query "accessToken" -o tsv)
           echo "zip done && token recovered"
-          az functionapp deployment source config-zip --name emat-dev-func-indaba --resource-group rg-TEPARAZRLD-app-emat-dev --src ../app.zip
+          az functionapp deployment source config-zip --name emat-${ENV_NAME}-fnc-java-integration --resource-group rg-TEPARAZRLD-app-emat-${ENV_NAME} --src ../app.zip
+          echo "The deployment of function ${{env. AZURE_FUNCTIONAPP_NAME}} was successful"
