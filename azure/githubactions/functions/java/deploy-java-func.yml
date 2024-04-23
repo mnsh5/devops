@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 env:
-  AZURE_FUNCTIONAPP_NAME: "emat-dev-fnc-java-integration"
+  AZURE_FUNCTIONAPP_NAME: "app-dev-fnc-java-integration"
   POM_XML_DIRECTORY: "."
   JAVA_VERSION: "17"
   ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
@@ -72,5 +72,5 @@ jobs:
           zip -r ../app.zip .
           export token=$(az account get-access-token --query "accessToken" -o tsv)
           echo "zip done && token recovered"
-          az functionapp deployment source config-zip --name emat-${ENV_NAME}-fnc-java-integration --resource-group rg-TEPARAZRLD-app-emat-${ENV_NAME} --src ../app.zip
+          az functionapp deployment source config-zip --name app-${ENV_NAME}-fnc-java-integration --resource-group app-emat-${ENV_NAME} --src ../app.zip
           echo "The deployment of function ${{env. AZURE_FUNCTIONAPP_NAME}} was successful"
