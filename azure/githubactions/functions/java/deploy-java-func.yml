@@ -68,9 +68,9 @@ jobs:
         shell: bash
         run: |
           ls -lh
-          cd ./target/azure-functions/emat-${ENV_NAME}-fnc-java-integration/
+          cd ./target/azure-functions/app-${ENV_NAME}-fnc-java-integration/
           zip -r ../app.zip .
           export token=$(az account get-access-token --query "accessToken" -o tsv)
           echo "zip done && token recovered"
-          az functionapp deployment source config-zip --name app-${ENV_NAME}-fnc-java-integration --resource-group app-emat-${ENV_NAME} --src ../app.zip
+          az functionapp deployment source config-zip --name app-${ENV_NAME}-fnc-java-integration --resource-group app-${ENV_NAME} --src ../app.zip
           echo "The deployment of function ${{env. AZURE_FUNCTIONAPP_NAME}} was successful"
